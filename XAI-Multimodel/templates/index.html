@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Diabetic Retinopathy Classifier</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <style>
+    /* Improved Loading Animation */
+    .loader {
+      display: flex;
+      gap: 8px;
+    }
+    .loader-dot {
+      width: 12px;
+      height: 12px;
+      background-color: #3b82f6;
+      border-radius: 50%;
+      animation: pulse-dot 1.2s ease-in-out infinite;
+    }
+    .loader-dot:nth-child(2) { animation-delay: 0.2s; }
+    .loader-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes pulse-dot {
+      0%, 80%, 100% { transform: scale(1); opacity: 0.7; }
+      40% { transform: scale(1.5); opacity: 1; }
+    }
+
+    /* Progress Steps Animation */
+    .progress-step {
+      transition: all 0.3s ease;
+    }
+    .progress-step.active {
+      background-color: #3b82f6;
+      color: white;
+    }
+
+    /* Card Fade-In Animation */
+    .result-card {
+      opacity: 0;
+      transform: translateY(20px);
+      animation: fadeInUp 0.5s ease-out forwards;
+    }
+    .result-card:nth-child(2) { animation-delay: 0.1s; }
+    .result-card:nth-child(3) { animation-delay: 0.2s; }
+    @keyframes fadeInUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Button Micro-Interactions */
+    .btn-interaction {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .btn-interaction:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    .btn-interaction:active {
+      transform: scale(0.95);
+    }
+
+    /* Image Preview Fade-In */
+    .image-preview {
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    .image-preview.visible {
+      opacity: 1;
+    }
+
+    /* Tooltip Slide-Up Animation */
+    .tooltip {
+      visibility: hidden;
+      position: absolute;
+      z-index: 10;
+      bottom: 125%;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background-color: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      white-space: nowrap;
+      opacity: 0;
+      transition: opacity 0.3s, transform 0.3s;
+    }
+    .tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      margin-left: -5px;
+      border-width: 5px;
+      border-style: solid;
+      border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
+    }
+    .tooltip-container:hover .tooltip {
+      visibility: visible;
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background-color: #1f2937;
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity 0.3s, transform 0.3s;
+      z-index: 1000;
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Zoomable Image */
+    .zoomable-img {
+      transition: transform 0.3s ease;
+      cursor: zoom-in;
+    }
+    .zoomable-img.zoomed {
+      transform: scale(1.5);
+      cursor: zoom-out;
+    }
+
+    /* Card Hover Effect */
+    .result-card {
+      transition: all 0.3s ease;
+    }
+    .result-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    }
+
+    /* Upload Area Animation */
+    .upload-area {
+      border: 2px dashed #d1d5db;
+      transition: all 0.3s ease;
+    }
+    .upload-area:hover {
+      border-color: #3b82f6;
+      background-color: #f0f7ff;
+    }
+    .upload-area.dragging {
+      background-color: #eff6ff;
+      border-color: #3b82f6;
+      transform: scale(1.02);
+    }
+
+    /* Collapsible Upload Area */
+    .upload-card.collapsed .upload-area {
+      display: none;
+    }
+    .upload-card .toggle-upload {
+      display: none;
+    }
+    .upload-card.collapsed .toggle-upload {
+      display: block;
+    }
+  </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen font-sans text-gray-800">
+  <nav class="bg-white shadow" aria-label="Main navigation">
+    <div class="max-w-8xl mx-auto px-5 sm:px-5 lg:px-9">
+      <div class="flex justify-between h-16">
+        <div class="flex items-center">
+          <div class="flex-shrink-0 flex items-center">
+            <svg class="h-8 w-8 text-blue-600" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2c5.514 0 10 4.486 10 10s-4.486 10-10 10-10-4.486-10-10 4.486-10 10-10zm0 18c4.411 0 8-3.589 8-8s-3.589-8-8-8-8 3.589-8 8 3.589 8 8 8zm3.707-11.707l-5 5-2.414-2.414 1.414-1.414.707.707 3.586-3.586 1.707 1.707z"/>
+            </svg>
+            <span class="ml-2 text-xl font-bold">DR Vision</span>
+          </div>
+        </div>
+        <div class="flex items-center space-x-4">
+          <a href="#" class="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900">About</a>
+          <button id="navUploadButton" class="px-3 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 btn-interaction tooltip-container" aria-label="Upload fundus image">
+            <svg class="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12"/>
+            </svg>
+            Upload
+            <span class="tooltip">Upload a fundus image for analysis</span>
+          </button>
+          <a href="#" class="px-3 py-2 rounded-md text-sm font-medium text-gray-700 hover:text-gray-900">Help</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <header class="text-center mb-10">
+      <h1 class="text-4xl font-extrabold text-gray-900 tracking-tight mb-3">Diabetic Retinopathy Prediction</h1>
+      <p class="text-xl text-gray-600 max-w-3xl mx-auto">Early detection through advanced AI analysis of fundus images</p>
+      <div class="mt-5 flex justify-center flex-wrap gap-2">
+        <span class="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+          <svg class="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+          </svg>
+          3 ML Models
+        </span>
+        <span class="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium bg-green-100 text-green-800">
+          <svg class="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path fill-rule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+          </svg>
+          Grad-CAM
+        </span>
+        <span class="inline-flex items-center px-3 py-0.5 rounded-full text-sm font-medium bg-purple-100 text-purple-800">
+          <svg class="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"/>
+            <path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"/>
+          </svg>
+          Visual Analysis
+        </span>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div class="lg:col-span-1">
+        <!-- Info Card -->
+           <aside class="lg:col-span-1 space-y-6">
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            About Diabetic Retinopathy
+          </h2>
+          <p class="text-gray-600 text-sm mb-4 leading-relaxed">
+            Diabetic retinopathy is a serious diabetes complication affecting the eyes. Early detection through AI analysis can prevent vision loss and improve patient outcomes.
+          </p>
+          
+          <h3 class="font-medium text-gray-800 mb-3">Severity Classification:</h3>
+          <div class="space-y-3" role="list" aria-label="Severity levels">
+            <div class="flex items-center p-2 rounded-lg bg-gray-50">
+              <span class="w-3 h-3 rounded-full bg-green-500 mr-3 flex-shrink-0" aria-hidden="true"></span>
+              <div>
+                <span class="text-sm font-medium text-gray-700 block">No DR</span>
+                <span class="text-xs text-gray-500">No visible abnormalities</span>
+              </div>
+            </div>
+            <div class="flex items-center p-2 rounded-lg bg-gray-50">
+              <span class="w-3 h-3 rounded-full bg-yellow-500 mr-3 flex-shrink-0" aria-hidden="true"></span>
+              <div>
+                <span class="text-sm font-medium text-gray-700 block">Mild DR</span>
+                <span class="text-xs text-gray-500">Microaneurysms only</span>
+              </div>
+            </div>
+            <div class="flex items-center p-2 rounded-lg bg-gray-50">
+              <span class="w-3 h-3 rounded-full bg-orange-500 mr-3 flex-shrink-0" aria-hidden="true"></span>
+              <div>
+                <span class="text-sm font-medium text-gray-700 block">Moderate DR</span>
+                <span class="text-xs text-gray-500">More than microaneurysms</span>
+              </div>
+            </div>
+            <div class="flex items-center p-2 rounded-lg bg-gray-50">
+              <span class="w-3 h-3 rounded-full bg-red-500 mr-3 flex-shrink-0" aria-hidden="true"></span>
+              <div>
+                <span class="text-sm font-medium text-gray-700 block">Severe DR</span>
+                <span class="text-xs text-gray-500">Extensive abnormalities</span>
+              </div>
+            </div>
+            <div class="flex items-center p-2 rounded-lg bg-gray-50">
+              <span class="w-3 h-3 rounded-full bg-red-800 mr-3 flex-shrink-0" aria-hidden="true"></span>
+              <div>
+                <span class="text-sm font-medium text-gray-700 block">Proliferative DR</span>
+                <span class="text-xs text-gray-500">Neovascularization present</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="mt-4 pt-4 border-t border-gray-200">
+            <h3 class="font-medium text-gray-800 mb-3">Quick Statistics</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <div class="bg-blue-50 rounded-lg p-3">
+                <p class="text-blue-800 font-bold text-xl">34.6%</p>
+                <p class="text-xs text-blue-700">of diabetic patients develop DR after 10 years</p>
+              </div>
+              <div class="bg-green-50 rounded-lg p-3">
+                <p class="text-green-800 font-bold text-xl">95%</p>
+                <p class="text-xs text-green-700">reduction in vision loss with early detection</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="mt-4 text-center">
+            <button id="learnMoreBtn" class="text-blue-600 text-sm hover:text-blue-800 tooltip-container" aria-label="Learn more about diabetic retinopathy">
+              Learn more about DR
+              <span class="tooltip">Opens educational resources in a new window</span>
+            </button>
+          </div>
+        </div>
+        
+        <!-- Upload Card (Collapsible) -->
+        <div id="uploadCard" class="bg-white rounded-lg shadow-md p-6 upload-card">
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-lg font-semibold text-gray-800 flex items-center">
+              <svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12"/>
+              </svg>
+              Upload Fundus Image
+            </h2>
+            <button id="toggleUpload" class="toggle-upload px-2 py-1 text-sm text-gray-600 hover:text-gray-800" aria-label="Toggle upload area">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+          </div>
+          
+          <div id="uploadArea" class="upload-area rounded-lg p-8 text-center cursor-pointer mb-4" role="region" aria-label="Image upload area">
+            <input type="file" id="imageInput" accept="image/*" class="hidden" aria-label="Upload fundus image">
+            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+            </svg>
+            <p class="mt-1 text-sm text-gray-600">Drag and drop your fundus image here or</p>
+            <button id="browseButton" class="mt-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 btn-interaction" aria-label="Browse files">
+              Browse Files
+            </button>
+            <p class="mt-2 text-xs text-gray-500">Supports: JPG, PNG, JPEG (Max 10MB)</p>
+          </div>
+          
+          <div id="imagePreview" class="image-preview hidden">
+            <div class="relative">
+              <img id="previewImg" class="w-full rounded-md border border-gray-200" alt="Uploaded fundus image"/>
+              <button id="removeImage" class="absolute top-2 right-2 bg-red-100 rounded-full p-1 shadow hover:bg-red-200 btn-interaction" aria-label="Remove uploaded image">
+                <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div class="flex justify-center mt-4">
+              <button id="analyzeButton" class="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 flex items-center btn-interaction" aria-label="Analyze uploaded image">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                </svg>
+                Analyze Image
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-2">
+        <!-- Loading State -->
+        <div id="loading" class="hidden bg-white rounded-lg shadow-md p-8 text-center">
+          <div class="flex flex-col items-center">
+            <div class="loader mb-4">
+              <div class="loader-dot"></div>
+              <div class="loader-dot"></div>
+              <div class="loader-dot"></div>
+            </div>
+            <h3 class="text-lg font-medium text-gray-900 mb-2">Analyzing Fundus Image</h3>
+            <p class="text-gray-600 mb-4">Our AI models are processing your image. This may take a few moments.</p>
+            
+            <div class="flex justify-between w-full max-w-md mb-4">
+              <div class="progress-step flex-1 mx-1 py-2 px-3 rounded-full bg-gray-100 text-gray-600 text-xs" data-step="preprocessing">Preprocessing</div>
+              <div class="progress-step flex-1 mx-1 py-2 px-3 rounded-full bg-gray-100 text-gray-600 text-xs" data-step="analysis">Model Analysis</div>
+              <div class="progress-step flex-1 mx-1 py-2 px-3 rounded-full bg-gray-100 text-gray-600 text-xs" data-step="results">Results</div>
+            </div>
+            
+            <div class="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-md">
+              <div class="flex items-center justify-center bg-blue-50 p-2 rounded-lg">
+                <span class="w-3 h-3 bg-blue-500 rounded-full mr-2" aria-hidden="true"></span>
+                <span class="text-sm text-blue-700">ResNet50</span>
+              </div>
+              <div class="flex items-center justify-center bg-purple-50 p-2 rounded-lg">
+                <span class="w-3 h-3 bg-purple-500 rounded-full mr-2" aria-hidden="true"></span>
+                <span class="text-sm text-purple-700">EfficientNet-B0</span>
+              </div>
+              <div class="flex items-center justify-center bg-green-50 p-2 rounded-lg">
+                <span class="w-3 h-3 bg-green-500 rounded-full mr-2" aria-hidden="true"></span>
+                <span class="text-sm text-green-700">VGG16</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="error" class="hidden bg-white rounded-lg shadow-md overflow-hidden">
+          <div class="bg-red-50 p-4 border-l-4 border-red-500">
+            <div class="flex">
+              <div class="flex-shrink-0">
+                <svg class="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div class="ml-3">
+                <h3 class="text-sm font-medium text-red-800">An error occurred</h3>
+                <div class="mt-2 text-sm text-red-700">
+                  <p id="errorText"></p>
+                </div>
+                <div class="mt-4">
+                  <div class="-mx-2 -my-1.5 flex">
+                    <button id="dismissError" class="px-2 py-1.5 rounded-md text-sm font-medium text-red-800 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 btn-interaction" aria-label="Dismiss error">
+                      Dismiss
+                    </button>
+                    <button id="tryAgain" class="ml-3 px-2 py-1.5 rounded-md text-sm font-medium text-red-800 hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 btn-interaction" aria-label="Try again">
+                      Try Again
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="hidden">
+          <!-- Final Prediction Card -->
+          <div id="finalPrediction" class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-bold text-gray-800">Final Prediction</h2>
+              <span class="text-sm text-gray-500">Majority Vote Algorithm</span>
+            </div>
+            
+            <div class="flex items-center mb-4">
+              <div id="finalBadge" class="text-2xl font-bold py-1 px-3 rounded-lg mr-4">No DR</div>
+              <div class="flex-1">
+                <div class="flex items-center">
+                  <span class="text-gray-700 font-medium">Confidence:</span>
+                  <div class="ml-2 flex-1">
+                    <div id="confidenceBar" class="w-full bg-gray-200 rounded-full h-2.5">
+                      <div id="confidenceFill" class="bg-green-600 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                  </div>
+                  <span id="confidenceText" class="ml-2 text-sm font-semibold">0%</span>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <h3 class="text-sm font-medium text-gray-700 mb-1">Explanation:</h3>
+              <p id="finalExplanation" class="text-gray-600"></p>
+            </div>
+          <!-- Individual Model Results -->
+          <h3 class="text-lg font-semibold text-gray-800 mb-3">Individual Model Analysis</h3>
+          <div id="modelResults" class="grid gap-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3"></div>
+           <!-- Predictive Risk Analysis Chart -->
+            <div class="mt-4 pt-4 border-t border-gray-200 mb-6">
+              <div class="flex justify-between items-center mb-2">
+                <h3 class="text-sm font-medium text-gray-700">Predictive Risk Analysis</h3>
+                <div class="relative tooltip-container">
+                  <svg class="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/>
+                  </svg>
+                  <span class="tooltip">Confidence distribution across severity levels</span>
+                </div>
+              </div>
+              <div class="relative h-3624">
+                <canvas id="riskChart"></canvas>
+            <div class="mt-4 pt-4 border-t border-gray-200">
+              <h3 class="text-sm font-medium text-gray-700 mb-2">Recommendation</h3>
+              <div id="recommendation" class="p-3 bg-blue-50 rounded-md text-sm text-blue-700">
+                <div class="flex">
+                  <svg class="flex-shrink-0 w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  <span id="recommendationText"></span>
+                </div>
+              </div>
+              </div>
+              </div>
+            </div>
+          <!-- Action Buttons (Including New Upload Button) -->
+          <div class="mt-6 text-center flex flex-col sm:flex-row justify-center gap-4">
+            <button id="downloadReport" class="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 inline-flex items-center btn-interaction" aria-label="Download analysis report">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Download Report
+            </button>
+            <button id="newAnalysis" class="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 inline-flex items-center btn-interaction" aria-label="Start new analysis">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+              New Analysis
+            </button>
+            <button id="resultsUploadButton" class="px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 inline-flex items-center btn-interaction tooltip-container" aria-label="Upload new fundus image">
+              <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0l-4 4m4-4v12"/>
+              </svg>
+              Upload New Image
+              <span class="tooltip">Upload a new fundus image for analysis</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<!-- Action Buttons -->
+              <div class="mt-4 flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+                <button id="scheduleFollowUp" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 flex items-center justify-center btn-interaction" aria-label="Schedule follow-up appointment">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Schedule Follow-up
+                </button>
+                <button id="shareDoctorBtn" class="flex-1 px-3 py-2 text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 flex items-center justify-center btn-interaction" aria-label="Share with doctor">
+                  <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                  Share with Doctor
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          
+  <footer class="bg-gray-800 text-white py-8 mt-12" aria-label="Footer">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-col md:flex-row justify-between">
+        <div class="mb-6 md:mb-0">
+          <h3 class="text-lg font-semibold mb-2">DR Vision Classifier</h3>
+          <p class="text-gray-400 text-sm">AI-powered diabetic retinopathy detection and classification system</p>
+        </div>
+        <div class="grid grid-cols-2 gap-8 sm:grid-cols-3">
+          <div>
+            <h3 class="text-sm font-semibold mb-2">Resources</h3>
+            <ul class="space-y-2" role="list">
+              <li><a href="https://drive.google.com/file/d/1lw-hcAfSUazpQYJAi5I3t-PBhY2RMBSk/view?usp=sharing" class="text-gray-400 hover:text-white text-sm">Documentation</a></li>
+              <li><a href="https://drive.google.com/file/d/1wrXq1ogoyVqLrahdOqSrx9xLa8qydQEr/view?usp=sharing" class="text-gray-400 hover:text-white text-sm">Research Papers</a></li>
+              <li><a href="https://drive.google.com/file/d/1G5yc6o8ESq60hdBEuevzoxFC0VnudPpA/view?usp=sharing" class="text-gray-400 hover:text-white text-sm">Model Information</a></li>
+            </ul>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold mb-2">About</h3>
+            <ul class="space-y-2" role="list">
+              <li><a href="https://drive.google.com/file/d/1mSZNN65g0Tp_Fu-0bGZLL958FQKCp3vJ/view?usp=sharing" class="text-gray-400 hover:text-white text-sm">Our Team</a></li>
+              <li><a href="https://drive.google.com/file/d/1ZC46G7-hROjGQ3HacqGCB2BXAJsh8ltn/view?usp=sharing" class="text-gray-400 hover:text-white text-sm">Privacy Policy</a></li>
+              <li><a href="https://drive.google.com/file/d/13iPX1N_WxtmjH9IqWcJUegGw7scgf6Vw/view?usp=sharing" class="text-gray-400 hover:text-white text-sm">Terms of Use</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="mt-8 border-t border-gray-700 pt-4 text-sm text-gray-400 text-center">
+        <p>© 2025 DR Vision. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Utility Functions
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => document.querySelectorAll(selector);
+
+    // Debounce function
+    function debounce(fn, ms) {
+      let timeout;
+      return (...args) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => fn(...args), ms);
+      };
+    }
+
+    // Toast Notification
+    function showToast(message, duration = 3000) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.classList.add('show'), 100);
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
+    // Severity Configuration
+    const severityConfig = {
+      'No DR': {
+        color: 'text-green-800 bg-green-100',
+        barColor: 'bg-green-600',
+        recommendation: 'Continue with regular annual eye exams.'
+      },
+      'Mild': {
+        color: 'text-yellow-800 bg-yellow-100',
+        barColor: 'bg-yellow-600',
+        recommendation: 'Follow up with an eye specialist within 6-12 months.'
+      },
+      'Moderate': {
+        color: 'text-orange-800 bg-orange-100',
+        barColor: 'bg-orange-500',
+        recommendation: 'Schedule an appointment with an ophthalmologist within 3-6 months.'
+      },
+      'Severe': {
+        color: 'text-red-800 bg-red-100',
+        barColor: 'bg-red-600',
+        recommendation: 'Urgent referral to an ophthalmologist within 1 month.'
+      },
+      'Proliferative': {
+        color: 'text-red-800 bg-red-200',
+        barColor: 'bg-red-800',
+        recommendation: 'Immediate referral to a retina specialist. This is an urgent condition that requires prompt treatment.'
+      }
+    };
+
+    // Chart.js Initialization
+    let riskChart = null;
+    function initializeRiskChart(probabilities) {
+      const ctx = $('#riskChart').getContext('2d');
+      if (riskChart) riskChart.destroy();
+      riskChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['No DR', 'Mild', 'Moderate', 'Severe', 'Proliferative'],
+          datasets: [{
+            label: 'Confidence',
+            data: probabilities,
+            backgroundColor: ['#10B981', '#FBBF24', '#F97316', '#EF4444', '#991B1B'],
+            borderColor: ['#10B981', '#FBBF24', '#F97316', '#EF4444', '#991B1B'],
+            borderWidth: 1
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          scales: {
+            x: { beginAtZero: true, max: 100, title: { display: true, text: 'Confidence (%)' } },
+            y: { title: { display: true, text: 'Severity Level' } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: (context) => `${context.raw}%` } }
+          },
+          animation: {
+            duration: 1000,
+            easing: 'easeOutQuart'
+          }
+        }
+      });
+    }
+
+    // UI Module
+    const UI = {
+      elements: {
+        uploadCard: $('#uploadCard'),
+        uploadArea: $('#uploadArea'),
+        imageInput: $('#imageInput'),
+        browseButton: $('#browseButton'),
+        navUploadButton: $('#navUploadButton'),
+        resultsUploadButton: $('#resultsUploadButton'),
+        toggleUpload: $('#toggleUpload'),
+        imagePreview: $('#imagePreview'),
+        previewImg: $('#previewImg'),
+        removeImage: $('#removeImage'),
+        analyzeButton: $('#analyzeButton'),
+        loading: $('#loading'),
+        results: $('#results'),
+        modelResults: $('#modelResults'),
+        finalPrediction: $('#finalPrediction'),
+        finalBadge: $('#finalBadge'),
+        confidenceFill: $('#confidenceFill'),
+        confidenceText: $('#confidenceText'),
+        finalExplanation: $('#finalExplanation'),
+        recommendationText: $('#recommendationText'),
+        error: $('#error'),
+        errorText: $('#errorText'),
+        dismissError: $('#dismissError'),
+        tryAgain: $('#tryAgain'),
+        downloadReport: $('#downloadReport'),
+        newAnalysis: $('#newAnalysis'),
+        scheduleFollowUp: $('#scheduleFollowUp'),
+        shareDoctorBtn: $('#shareDoctorBtn'),
+        learnMoreBtn: $('#learnMoreBtn')
+      },
+
+      showError(message) {
+        this.elements.loading.classList.add('hidden');
+        this.elements.errorText.textContent = message;
+        this.elements.error.classList.remove('hidden');
+        showToast(message, 4000);
+      },
+
+      reset() {
+        this.elements.imageInput.value = '';
+        this.elements.imagePreview.classList.remove('visible');
+        this.elements.imagePreview.classList.add('hidden');
+        this.elements.uploadArea.classList.remove('hidden');
+        this.elements.results.classList.add('hidden');
+        this.elements.error.classList.add('hidden');
+        this.elements.uploadCard.classList.remove('collapsed');
+        if (riskChart) {
+          riskChart.destroy();
+          riskChart = null;
+        }
+      },
+
+      displayPreview(file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          this.elements.previewImg.src = e.target.result;
+          this.elements.uploadArea.classList.add('hidden');
+          this.elements.imagePreview.classList.remove('hidden');
+          this.elements.uploadCard.classList.add('collapsed');
+          setTimeout(() => this.elements.imagePreview.classList.add('visible'), 10);
+        };
+        reader.readAsDataURL(file);
+      },
+
+      updateProgressStep(step) {
+        $$('.progress-step').forEach(el => {
+          el.classList.toggle('active', el.dataset.step === step);
+        });
+      }
+    };
+
+    // API Module
+    const API = {
+      async analyzeImage(file, retryCount = 0) {
+        UI.elements.loading.classList.remove('hidden');
+        UI.updateProgressStep('preprocessing');
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+          setTimeout(() => UI.updateProgressStep('analysis'), 1000);
+          const response = await fetch('/predict', { method: 'POST', body: formData });
+          const data = await response.json();
+
+          UI.elements.loading.classList.add('hidden');
+          if (data.error) {
+            UI.showError(data.error);
+            return null;
+          }
+
+          setTimeout(() => UI.updateProgressStep('results'), 500);
+          return data;
+        } catch (err) {
+          UI.elements.loading.classList.add('hidden');
+          if (retryCount < 2) {
+            showToast('Retrying request...', 2000);
+            return this.analyzeImage(file, retryCount + 1);
+          }
+          UI.showError('Failed to process image. Please check your connection and try again.');
+          console.error('API Error:', err);
+          return null;
+        }
+      }
+    };
+
+    // Results Module
+    const Results = {
+      process(data) {
+        UI.elements.modelResults.innerHTML = '';
+
+        data.results.forEach((result) => {
+          const card = document.createElement('div');
+          card.className = 'result-card bg-white rounded-lg shadow p-4 hover:shadow-lg';
+          const severityClass = severityConfig[result.prediction].color;
+
+          card.innerHTML = `
+            <div class="flex items-center justify-between mb-3">
+              <h4 class="font-semibold text-gray-800">${result.model}</h4>
+              <span class="${severityClass} text-xs px-2 py-1 rounded-full font-medium">${result.prediction}</span>
+            </div>
+            <div class="mb-3">
+              <div class="flex justify-between text-xs mb-1">
+                <span>Confidence</span>
+                <span class="font-medium">${result.confidence}</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-1.5">
+                <div class="${severityConfig[result.prediction].barColor} h-1.5 rounded-full transition-all duration-500" style="width: ${parseFloat(result.confidence)}%"></div>
+              </div>
+            </div>
+            <p class="text-xs text-gray-600 mb-3">${result.explanation}</p>
+            <div class="relative tooltip-container">
+              <img src="data:image/png;base64,${result.heatmap}" alt="Grad-CAM visualization for ${result.model}" class="w-full rounded border zoomable-img">
+              <span class="absolute bottom-1 right-1 bg-black bg-opacity-50 text-white text-xs px-1.5 py-0.5 rounded">
+                Grad-CAM
+              </span>
+              <span class="tooltip">Click to zoom heatmap</span>
+            </div>
+          `;
+
+          card.querySelector('.zoomable-img').addEventListener('click', (e) => {
+            e.target.classList.toggle('zoomed');
+          });
+
+          UI.elements.modelResults.appendChild(card);
+        });
+
+        const prediction = data.final_prediction;
+        const confidence = data.final_confidence;
+
+        UI.elements.finalBadge.textContent = prediction;
+        UI.elements.finalBadge.className = `text-2xl font-bold py-1 px-3 rounded-lg mr-4 ${severityConfig[prediction].color}`;
+
+        UI.elements.confidenceFill.style.width = `${parseFloat(confidence)}%`;
+        UI.elements.confidenceFill.className = `h-2.5 rounded-full ${severityConfig[prediction].barColor}`;
+        UI.elements.confidenceText.textContent = confidence;
+
+        UI.elements.finalExplanation.textContent = data.final_explanation;
+        UI.elements.recommendationText.textContent = severityConfig[prediction].recommendation;
+
+        const probabilities = data.results.reduce((acc, result) => {
+          const conf = parseFloat(result.confidence);
+          acc[Object.keys(severityConfig).indexOf(result.prediction)] += conf / 3;
+          return acc;
+        }, [0, 0, 0, 0, 0]);
+        initializeRiskChart(probabilities);
+
+        UI.elements.results.classList.remove('hidden');
+      },
+
+      generateReport() {
+        const element = document.createElement('div');
+        element.className = 'p-6 bg-white';
+        element.innerHTML = `
+          <h1 class="text-2xl font-bold mb-4">Diabetic Retinopathy Analysis Report</h1>
+          <h2 class="text-lg font-semibold mb-2">Uploaded Image</h2>
+          <img src="${UI.elements.previewImg.src}" alt="Fundus Image" class="w-64 mb-4 rounded border">
+          <h2 class="text-lg font-semibold mb-2">Final Prediction</h2>
+          <p><strong>Result:</strong> <span class="${UI.elements.finalBadge.className}">${UI.elements.finalBadge.textContent}</span></p>
+          <p><strong>Confidence:</strong> ${UI.elements.confidenceText.textContent}</p>
+          <p><strong>Explanation:</strong> ${UI.elements.finalExplanation.textContent}</p>
+          <p><strong>Recommendation:</strong> ${UI.elements.recommendationText.textContent}</p>
+          <h2 class="text-lg font-semibold mt-4 mb-2">Individual Model Results</h2>
+          ${UI.elements.modelResults.innerHTML}
+        `;
+
+        const opt = {
+          margin: 1,
+          filename: 'DR_Analysis_Report.pdf',
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2 },
+          jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        };
+
+        html2pdf().from(element).set(opt).save().then(() => {
+          showToast('Report downloaded successfully!');
+        });
+      }
+    };
+
+    // Event Handlers
+    function handleFiles(files) {
+      if (files.length === 0) return;
+      const file = files[0];
+      if (!file.type.match('image.*')) {
+        UI.showError('Please upload an image file (JPG, PNG, JPEG).');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        UI.showError('File size exceeds 10MB limit.');
+        return;
+      }
+      UI.displayPreview(file);
+    }
+
+    async function handleAnalyze() {
+      const file = UI.elements.imageInput.files[0];
+      if (!file) {
+        UI.showError('No image selected. Please upload an image.');
+        return;
+      }
+      const data = await API.analyzeImage(file);
+      if (data) Results.process(data);
+    }
+
+    // Event Listeners
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      UI.elements.uploadArea.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      UI.elements.uploadArea.addEventListener(eventName, () => {
+        UI.elements.uploadArea.classList.add('dragging');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      UI.elements.uploadArea.addEventListener(eventName, () => {
+        UI.elements.uploadArea.classList.remove('dragging');
+      });
+    });
+
+    UI.elements.uploadArea.addEventListener('drop', (e) => {
+      handleFiles(e.dataTransfer.files);
+    });
+
+    UI.elements.browseButton.addEventListener('click', () => {
+      UI.elements.imageInput.click();
+    });
+
+    UI.elements.navUploadButton.addEventListener('click', () => {
+      UI.elements.imageInput.click();
+      UI.elements.uploadCard.classList.remove('collapsed');
+    });
+
+    UI.elements.resultsUploadButton.addEventListener('click', () => {
+      UI.elements.imageInput.click();
+      UI.elements.uploadCard.classList.remove('collapsed');
+    });
+
+    UI.elements.toggleUpload.addEventListener('click', () => {
+      UI.elements.uploadCard.classList.toggle('collapsed');
+    });
+
+    UI.elements.imageInput.addEventListener('change', debounce((e) => {
+      handleFiles(e.target.files);
+    }, 300));
+
+    UI.elements.removeImage.addEventListener('click', () => UI.reset());
+
+    UI.elements.analyzeButton.addEventListener('click', handleAnalyze);
+
+    UI.elements.dismissError.addEventListener('click', () => {
+      UI.elements.error.classList.add('hidden');
+    });
+
+    UI.elements.tryAgain.addEventListener('click', () => {
+      UI.reset();
+    });
+
+    UI.elements.downloadReport.addEventListener('click', () => Results.generateReport());
+
+    UI.elements.newAnalysis.addEventListener('click', () => UI.reset());
+
+    UI.elements.scheduleFollowUp.addEventListener('click', () => {
+      showToast('Scheduling follow-up... (Feature coming soon)');
+    });
+
+    UI.elements.shareDoctorBtn.addEventListener('click', () => {
+      showToast('Sharing with doctor... (Feature coming soon)');
+    });
+
+    UI.elements.learnMoreBtn.addEventListener('click', () => {
+      window.open('https://www.nei.nih.gov/learn-about-eye-health/eye-conditions-and-diseases/diabetic-retinopathy', '_blank');
+    });
+
+    // Tooltip Handler
+    function addTooltip(element, text) {
+      element.classList.add('tooltip-container');
+      const tooltip = document.createElement('span');
+      tooltip.className = 'tooltip';
+      tooltip.textContent = text;
+      element.appendChild(tooltip);
+    }
+
+    addTooltip(UI.elements.downloadReport, 'Download a detailed PDF report');
+    addTooltip(UI.elements.newAnalysis, 'Start a new analysis with a different image');
+    addTooltip(UI.elements.scheduleFollowUp, 'Schedule a follow-up appointment with a specialist');
+    addTooltip(UI.elements.shareDoctorBtn, 'Share the analysis report with your doctor');
+    addTooltip(UI.elements.learnMoreBtn, 'Opens educational resources in a new window');
+    addTooltip(UI.elements.navUploadButton, 'Upload a fundus image for analysis');
+    addTooltip(UI.elements.resultsUploadButton, 'Upload a new fundus image for analysis');
+
+    // Keyboard Accessibility
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !UI.elements.error.classList.contains('hidden')) {
+        UI.elements.dismissError.click();
+      }
+      if (e.key === 'Enter' && [UI.elements.browseButton, UI.elements.navUploadButton, UI.elements.resultsUploadButton].includes(document.activeElement)) {
+        UI.elements.imageInput.click();
+      }
+    });
+  </script>
+</body>
+</html>
